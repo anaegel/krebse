@@ -56,11 +56,11 @@ local approxSpace = ApproximationSpace(dom)
 approxSpace:add_fct("A", "Lagrange", 1)
 approxSpace:add_fct("B", "Lagrange", 1)
 
--- Lexicographic order of indices. 
--- OrderLex(approxSpace, "x");
-
+-- Order downstream
 local downStreamVec = EdgeOrientation(dom)
 OrderDownwind(approxSpace, downStreamVec, 3.14/20.0)
+
+-- OrderLex(approxSpace, "x");			-- Lexicographic order of indices. 
 
 --------------------------------------------------------------------------------
 --  Setup FV Convection-Diffusion Element Discretization
@@ -68,71 +68,53 @@ OrderDownwind(approxSpace, downStreamVec, 3.14/20.0)
 
 print (">> Setting up Assembling")
 
+--------------------------------------------------------------------------------
+-- Gleichungen:
+--------------------------------------------------------------------------------
+--  \partial_t a + \partial_x [-lambda  \partial_x a + v a] + (amax-a)*a = 0 
+--  \partial_t b + \partial_x [-lambda  \partial_x b + v b] + a*b = 0
+
+local lambda  = 1.0
+local velocity = ScaleAddLinkerVector()
+velocity:add(0.1,downStreamVec)
+
 local Amax = 2.0
 local Bmax = 1.0
-
 
 local upwind = FullUpwind()
 local elemDisc = {}
 elemDisc["A"] = ConvectionDiffusionFV1("A", "River")
 elemDisc["B"] = ConvectionDiffusionFV1("B", "River")
 
-local velocity = ScaleAddLinkerVector()
-velocity:add(0.1,downStreamVec)
 
-
-local lambda  = 1.0
 -- Gleichung für A
-elemDisc["A"]:set_mass_scale(1.0)                   -- \partial A / \partial t
+elemDisc["A"]:set_mass_scale(1.0)                   		-- \partial A / \partial t
 elemDisc["A"]:set_diffusion(1.0)                        -- \partial_x (lambda* \partial_x A)
-elemDisc["A"]:set_velocity( downStreamVec)   -- \partial_x (v*A)
+elemDisc["A"]:set_velocity( downStreamVec)   						-- \partial_x (v*A)
 elemDisc["A"]:set_upwind(upwind)
 elemDisc["A"]:set_reaction_rate(elemDisc["A"]:value()-Amax) -- Vermehrung: (Amax-A)*A
 
-function sign(number)
-    return number > 0 and 1 or (number == 0 and 0 or -1)
-end
-
-
+-- Gleichung fuer B
 elemDisc["B"]:set_mass_scale(1.0) 
-elemDisc["B"]:set_diffusion(lambda)                      -- \partial_x (lambda* \partial_x B)
-elemDisc["B"]:set_velocity(downStreamVec)      -- \partial_x (v*B)
+elemDisc["B"]:set_diffusion(lambda)                      	-- \partial_x (lambda* \partial_x B)
+elemDisc["B"]:set_velocity(downStreamVec)      						-- \partial_x (v*B)
 elemDisc["B"]:set_upwind(upwind)
-elemDisc["B"]:set_reaction_rate(elemDisc["A"]:value())  -- Sterben: -B*A 
+elemDisc["B"]:set_reaction_rate(elemDisc["A"]:value())  	-- Sterben: -B*A 
 
 
--- Add inflow bnd cond.
--- local function AddInflowBC(domainDisc, Q, h, B, subsetID)
-local function AddInflowBC(domainDisc, A0, v0, subsetID)
-  local dirichletBND = DirichletBoundary()
-  dirichletBND:add(A0, "A", subsetID)
-  dirichletBND:add(v0, "B", subsetID) 
-  domainDisc:add(dirichletBND)
-end
-
--- Add outflow bnds.
-local function AddOutflowBC(domainDisc, pointID, subsetID)
-  local outflowBnd = {}
-
-  outflowBnd["A"] = NeumannBoundaryFV1("A")      --  v*A
-  -- outflowBnd["A"]:add(elemDisc["A"]:value()*elemDisc["B"]:value(), pointID, subsetID)
-
-  outflowBnd["B"] = NeumannBoundaryFV1("B")      -- 0.5*v^2 + g*(h+z)
-  --outflowBnd["B"]:add(gefaelle, pointID, subsetID)
-  --outflowBnd["B"]:add(0.5*elemDisc["B"]:value()*elemDisc["B"]:value(), pointID, subsetID)
-
-  domainDisc:add(outflowBnd["A"]) 
-  domainDisc:add(outflowBnd["B"]) 
-end
+-- 
+local dirichletBND = DirichletBoundary()
+dirichletBND:add(Amax, "A", "Sink")						-- An der Muendung nur invasive Spezies A
+dirichletBND:add(Bmax/10, "B", "Source2")			-- An Quelle 2 wird Spezies B ausgesetzt.
 
 
 -- Create discretization.
 local domainDisc = DomainDiscretization(approxSpace)
 domainDisc:add(elemDisc["A"])
 domainDisc:add(elemDisc["B"])
-AddInflowBC(domainDisc, Amax, 0.0, "Sink")        -- An der Muendung nur invasive Spezies A
-AddInflowBC(domainDisc, 0.0, Bmax/10, "Source2")  -- An Quelle 2 wird Spezies B ausgesetzt.
--- AddOutflowBC(domainDisc, "Sink", "River")
+domainDisc:add(dirichletBND)
+
+
 
 --------------------------------------------------------------------------------
 --  Algebra
@@ -190,15 +172,14 @@ local solver = util.solver.CreateSolver(solverDesc)
 -- Set initial value.
 print(">> Interpolation start values")
 local u = GridFunction(approxSpace)
-Interpolate(0.0, u, "A", ARGS.startTime)   -- no predators
-Interpolate(Bmax*0.5, u, "B", ARGS.startTime)  -- only prey
+Interpolate(0.0, u, "A", ARGS.startTime)   				-- no predators
+Interpolate(Bmax*0.0, u, "B", ARGS.startTime)  		-- only prey
 
 
 -- Configure VTK output.
 local vtk = VTKOutput() 
 vtk:select("A", "Species A")
 vtk:select("B", "Species B")
-
 
 -- Perform time stepping loop.
 util.SolveNonlinearTimeProblem(u, domainDisc, solver, vtk , "vtk/Krebse",
