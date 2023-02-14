@@ -2,4 +2,4 @@
 
 Ausführung mit 
 
-```ugshell -ex rivers/river-diffusion.lua```
+```ugshell -ex krebse/river-diffusion.lua```
