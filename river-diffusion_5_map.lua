@@ -142,7 +142,11 @@ solverDesc =
     linSolver = LU(), --[[{
         type = "bicgstab",
         precond = {
-        type = "ilu",
+          type = "ilu",
+        --  ordering ={
+         --   type ="River",
+            sources ="Source"
+          },
         -- sort = true,
         },
         convCheck = {
@@ -244,9 +248,10 @@ luaObserver:set_callback("luaPostProcess")
 
 --print (estimator)
 local limexEstimator = CompositeGridFunctionEstimator()
---limexEstimator:add(L2ComponentSpace(label.inf_B, 2))  -- Genauigkeit der Quadraturformel,, norm im finite element raum
---limexEstimator:add(L2ComponentSpace(label.sus_B, 2))  
-limexEstimator:add(H1SemiComponentSpace(label.inv_A, 2))  
+limexEstimator:add(L2ComponentSpace(label.inf_B, 2))  -- Genauigkeit der Quadraturformel,, norm im finite element raum
+limexEstimator:add(L2ComponentSpace(label.sus_B, 2))  
+limexEstimator:add(L2ComponentSpace(label.inv_A, 2))  
+-- limexEstimator:add(H1SemiComponentSpace(label.inv_A, 2))  
 
 -- descriptor for integrator
 local limexDesc = {
@@ -258,7 +263,7 @@ local limexDesc = {
   
   tol = 1e-3, -- toleranz 1e-2
   dt = ARGS.dt, --dtlimex,
-  dtmin = ARGS.dt * 1e-6, --- minimale zeitschrittweite
+  dtmin = ARGS.dt * 1e-4, --- minimale zeitschrittweite
   
   rhoSafetyOPT = 0.8, -- sicherheitsfaktor, kleiner Eins
   
@@ -283,7 +288,10 @@ limex:attach_observer(luaObserver)
 -- limex:select_cost_strategy(LimexNonlinearCost())
 -- limex:disable_matrix_cache()  -- recompute ()
 limex:enable_matrix_cache() -- keep matrix 
+limex:set_conservative(true)
 
+--local debugWriter=GridFunctionDebugWriter(approxSpace)
+--limex:set_debug(debugWriter)
 -- solve problem
 
 -- print(">> Peclet number:"..50.0*1.0/eps)
